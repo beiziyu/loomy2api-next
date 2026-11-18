@@ -1,0 +1,10 @@
+services:
+  loomy2api:
+    build: .
+    container_name: loomy2api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4556:4556"
+    volumes:
+      - ./config.json:/app/config.json
+      - ./logs:/app/logs

@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Loomy2API · 控制台</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121820; --panel2:#171f29; --line:#233040;
+    --text:#e6edf6; --muted:#8fa3b8; --accent:#4ea8ff; --ok:#3ddc97; --warn:#ffb020; --bad:#ff5d5d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#14243a 0%,var(--bg) 55%);color:var(--text);
+       font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft Yahei",sans-serif}
+  header{padding:22px 28px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+  h1{font-size:19px;margin:0;letter-spacing:.3px}
+  .tag{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:2px 8px;border-radius:99px}
+  main{padding:20px 28px 60px;max-width:1220px;margin:0 auto}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card .k{color:var(--muted);font-size:12px}
+  .card .v{font-size:22px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+  section{margin-bottom:26px}
+  h2{font-size:14px;color:var(--muted);font-weight:600;letter-spacing:.6px;text-transform:uppercase;margin:0 0 10px}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}
+  th{color:var(--muted);font-weight:600;background:var(--panel2)}
+  tr:last-child td{border-bottom:0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+  .ok{background:var(--ok)} .bad{background:var(--bad)} .idle{background:var(--muted)} .warn{background:var(--warn)}
+  button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 11px;
+         cursor:pointer;font-size:12px;transition:.15s}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.primary{background:linear-gradient(180deg,#2b7fd4,#1f66b0);border-color:#2b7fd4;color:#fff}
+  button.danger:hover{border-color:var(--bad);color:var(--bad)}
+  input,select,textarea{background:#0d141c;border:1px solid var(--line);color:var(--text);border-radius:8px;
+        padding:8px 10px;font-size:13px;width:100%;font-family:inherit}
+  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .row > div{flex:1;min-width:150px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .tabs{display:flex;gap:8px;margin-bottom:12px}
+  .tabs button.active{border-color:var(--accent);color:var(--accent)}
+  pre{background:#0a1018;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;
+      font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#b9cde3;max-height:280px;margin:0}
+  .hint{color:var(--muted);font-size:12px;margin-top:8px}
+  .pill{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+  .toast{position:fixed;right:20px;bottom:20px;background:#16222f;border:1px solid var(--line);border-radius:10px;
+         padding:10px 14px;font-size:13px;opacity:0;transform:translateY(8px);transition:.2s;max-width:420px;z-index:99}
+  .toast.show{opacity:1;transform:none}
+  .toast.err{border-color:var(--bad);color:#ffb3b3}
+  .copy{cursor:pointer;color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌙 Loomy2API</h1>
+  <span class="tag">OpenAI 兼容网关 · 号池</span>
+  <span class="tag" id="srvTime">-</span>
+  <span style="flex:1"></span>
+  <button onclick="load()">刷新</button>
+</header>
+
+<main>
+  <div class="grid">
+    <div class="card"><div class="k">账号总数</div><div class="v" id="mAccounts">-</div></div>
+    <div class="card"><div class="k">可用账号</div><div class="v" id="mUsable">-</div></div>
+    <div class="card"><div class="k">总积分</div><div class="v" id="mPoints">-</div></div>
+    <div class="card"><div class="k">请求 / 成功 / 失败</div><div class="v" id="mReqs">-</div></div>
+    <div class="card"><div class="k">Tokens 入 / 出</div><div class="v" id="mTokens">-</div></div>
+  </div>
+
+  <section>
+    <h2>账号池 <button style="margin-left:10px;font-size:11px" onclick="rebindAll()">批量补设备标识</button>
+      <span class="hint" style="margin-left:10px;text-transform:none;letter-spacing:0">要导入别的机器注册好的号？往下翻到「导入账号 · 批量导入 session」</span></h2>
+    <table>
+      <thead><tr><th>备注</th><th>状态</th><th>Session</th><th>设备标识(devid)</th><th>积分</th><th>冷却</th><th>最近错误</th><th style="width:340px">操作</th></tr></thead>
+      <tbody id="accBody"><tr><td colspan="8" class="hint">加载中…</td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>添加账号</h2>
+    <div class="tabs">
+      <button id="tabSms" class="active" onclick="switchTab('sms')">短信登录</button>
+      <button id="tabTok" onclick="switchTab('tok')">粘贴 session</button>
+    </div>
+    <div class="card">
+      <div id="paneSms">
+        <div class="row">
+          <div><label>手机号</label><input id="smsPhone" placeholder="13800000000" /></div>
+          <div><label>备注（可选）</label><input id="smsNote" placeholder="主号" /></div>
+          <div style="flex:0 0 130px"><label>&nbsp;</label><button class="primary" style="width:100%" onclick="smsSend()">发送验证码</button></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div style="flex:0 0 200px"><label>验证码</label><input id="smsCode" placeholder="6 位数字" /></div>
+          <div style="flex:0 0 170px"><label>&nbsp;</label><button class="primary" style="width:100%" onclick="smsLogin()">登录并入库</button></div>
+        </div>
+        <div class="hint">在服务器端直接调用 Loomy 短信登录接口，成功即写入号池并读取积分。</div>
+      </div>
+      <div id="paneTok" style="display:none">
+        <div class="row">
+          <div><label>备注</label><input id="tokNote" placeholder="主号" /></div>
+          <div style="flex:2"><label>session</label><input id="tokSession" placeholder="从桌面端 token 头或 loomy_login_result.json 复制" /></div>
+          <div style="flex:0 0 130px"><label>&nbsp;</label><button class="primary" style="width:100%" onclick="addToken()">添加</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>导入账号 · 批量导入 session</h2>
+    <div class="card">
+      <div class="hint" style="margin-bottom:8px">
+        每行一条，格式 <code class="mono">备注|session</code> 或直接 <code class="mono">session</code>；支持 <code class="mono">&amp;</code> 分隔、<code class="mono">#</code> 注释。
+        导入时自动校验 session、生成独立设备标识、去重（同 session / 同手机号）。
+      </div>
+      <div class="row">
+        <div style="flex:3"><label>粘贴 session</label>
+          <textarea id="impText" rows="6" placeholder="主号|a1b2c3...&#10;备用|d4e5f6...&#10;直接粘 session 也行" style="font-family:ui-monospace,Menlo,monospace"></textarea>
+        </div>
+        <div style="flex:1">
+          <label>备注前缀（可选）</label><input id="impPrefix" placeholder="本地注册" />
+          <label style="margin-top:8px"><input type="checkbox" id="impValidate" checked style="width:auto;margin-right:6px" />导入前校验</label>
+          <div style="margin-top:10px"><button class="primary" style="width:100%" onclick="importAccounts()">导入</button></div>
+        </div>
+      </div>
+      <pre id="impResult" style="margin-top:10px;display:none;max-height:200px"></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>接码平台 · 自动取号入池</h2>
+    <div class="card">
+      <div class="row">
+        <div style="flex:2"><label>平台地址（base_url）</label><input id="pBase" placeholder="http://api.my531.com" /></div>
+        <div><label>项目 ID</label><input id="pProject" placeholder="平台后台的项目 ID" /></div>
+        <div><label>平台账号</label><input id="pUser" placeholder="登录账号" /></div>
+        <div><label>平台密码</label><input id="pPass" placeholder="留空则不修改" /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label>Token（可留空，自动登录获取）</label><input id="pToken" placeholder="留空则用账号密码自动登录" /></div>
+        <div><label>登录路径</label><input id="pPathLogin" placeholder="/Login/?username={username}&password={password}&type=json" /></div>
+        <div style="flex:0 0 130px"><label>&nbsp;</label><button style="width:100%" onclick="poolBalance()">查余额</button></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label>取号路径</label><input id="pPathPhone" placeholder="/api/getPhone" /></div>
+        <div><label>取码路径</label><input id="pPathCode" placeholder="/api/getCode" /></div>
+        <div><label>释放路径</label><input id="pPathRelease" placeholder="/api/release" /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label>轮询间隔(秒)</label><input id="pPoll" type="number" min="1" /></div>
+        <div><label>取码超时(秒)</label><input id="pTimeout" type="number" min="30" /></div>
+        <div><label>并发</label><input id="pConc" type="number" min="1" max="5" /></div>
+        <div><label>账号备注前缀</label><input id="pPrefix" placeholder="接码" /></div>
+        <div><label>每号最多换号次数</label><input id="pAttempts" type="number" min="1" max="5" /></div>
+        <div><label>屏蔽号段(逗号)</label><input id="pBlock" placeholder="192,162" /></div>
+        <div><label>优先号段(逗号)</label><input id="pPrefer" placeholder="170" /></div>
+        <div style="flex:0 0 150px"><label>&nbsp;</label><button class="primary" style="width:100%" onclick="savePool()">保存配置</button></div>
+      </div>
+      <div class="row" style="margin-top:14px;align-items:center">
+        <div style="flex:0 0 120px"><label>数量</label><input id="pCount" type="number" min="1" max="100" value="1" /></div>
+        <div style="flex:0 0 130px"><label>&nbsp;</label><button class="primary" style="width:100%" onclick="startPool()">开始取号入池</button></div>
+        <div style="flex:0 0 100px"><label>&nbsp;</label><button onclick="stopPool()">停止</button></div>
+        <div style="flex:0 0 130px"><label>&nbsp;</label><button onclick="testPool()">测试取号</button></div>
+        <div class="hint" id="pMeta" style="align-self:center"></div>
+      </div>
+      <div class="hint" style="margin-top:8px">流程：向平台取号 → 请求 Loomy 短信验证码 → 轮询平台取码 → 提交登录 → 写入号池 → 释放号码（失败则拉黑）。路径里可用占位符 {token} {project} {phone} {num}。</div>
+      <pre id="pLog" style="margin-top:10px;max-height:240px">（未运行）</pre>
+      <pre id="pTest" style="margin-top:10px;display:none"></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>调用</h2>
+    <div class="card">
+      <div class="row">
+        <div><label>Base URL</label><input id="baseUrl" readonly /></div>
+        <div style="flex:0 0 220px"><label>API Key</label><input id="keyView" readonly /></div>
+        <div style="flex:0 0 120px"><label>&nbsp;</label><button style="width:100%" onclick="copyText(document.getElementById('keyView').value)">复制 Key</button></div>
+      </div>
+      <div class="hint" style="margin-bottom:10px">模型：<span id="modelList" class="mono">-</span></div>
+      <pre id="curlExample"></pre>
+      <div class="row" style="margin-top:12px">
+        <div><label>单次测试 prompt</label><input id="testPrompt" value="用一句话自我介绍" /></div>
+        <div style="flex:0 0 140px"><label>&nbsp;</label><button style="width:100%" onclick="runTest()">测活</button></div>
+      </div>
+      <pre id="testOut" style="margin-top:10px;display:none"></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>任务中心 · 每日积分 + 新手任务</h2>
+    <div class="row" style="margin-bottom:10px;align-items:center">
+      <div style="flex:0 0 170px"><button class="primary" onclick="runTasksAll()">一键领取全部账号</button></div>
+      <div style="flex:0 0 150px"><button onclick="loadTasks()">刷新任务状态</button></div>
+      <div class="hint" id="taskMeta" style="align-self:center"></div>
+    </div>
+    <div class="card" style="padding:0">
+      <table>
+        <thead><tr>
+          <th>账号</th><th>积分</th><th>每日积分</th><th>新手任务</th><th>已领 / 总额</th><th style="width:230px">操作</th>
+        </tr></thead>
+        <tbody id="taskBody"><tr><td colspan="6" class="hint">加载中…</td></tr></tbody>
+      </table>
+    </div>
+    <div id="taskDetail" style="margin-top:12px"></div>
+  </section>
+
+  <section>
+    <h2>模型清单 · 上下线状态</h2>
+    <div class="row" style="margin-bottom:10px;align-items:center">
+      <div class="tabs" style="margin:0">
+        <button id="mfAll" class="active" onclick="setModelFilter('all')">全部 <span id="mfAllN">0</span></button>
+        <button id="mfOn" onclick="setModelFilter('online')">上线 <span id="mfOnN">0</span></button>
+        <button id="mfOff" onclick="setModelFilter('offline')">下线 <span id="mfOffN">0</span></button>
+      </div>
+      <div style="flex:1"></div>
+      <div style="flex:0 0 190px"><button onclick="loadModels(1)">重新拉取模型列表</button></div>
+    </div>
+    <div class="card" style="padding:0">
+      <table>
+        <thead><tr>
+          <th>状态</th><th>模型</th><th>名称</th><th>上下文</th><th>最大输出</th>
+          <th>能力</th><th>倍率</th><th>首见</th><th>末见 / 测活</th><th style="width:150px">操作</th>
+        </tr></thead>
+        <tbody id="modelBody"><tr><td colspan="10" class="hint">需要有效账号才能拉取</td></tr></tbody>
+      </table>
+    </div>
+    <div class="hint" id="modelMeta" style="margin-top:8px"></div>
+  </section>
+
+  <section>
+    <h2>设置</h2>
+    <div class="card">
+      <div class="row">
+        <div><label>每日签到时间（北京时间）</label><input id="cfgDaily" placeholder="08:45" /></div>
+        <div><label>积分刷新间隔（分钟）</label><input id="cfgBal" type="number" min="5" /></div>
+        <div><label>默认模型</label><input id="cfgModel" placeholder="imodel/qwen3.8-flash" /></div>
+        <div><label>兜底模型（上游 503/504 自动切）</label><input id="cfgFallback" placeholder="qwen3.8-flash" /></div>
+        <div><label>设备标识模式</label>
+          <select id="cfgIdentity">
+            <option value="per_account">per_account · 每号独立</option>
+            <option value="client">client · 照客户端原样(devid=web)</option>
+          </select>
+        </div>
+        <div><label>路由策略</label>
+          <select id="cfgStrategy">
+            <option value="balance">balance · 积分最多优先</option>
+            <option value="lru">lru · 最久未用优先</option>
+            <option value="round_robin">round_robin · 轮询</option>
+          </select>
+        </div>
+        <div><label>冷却秒数</label><input id="cfgCooldown" type="number" min="5" /></div>
+        <div><label>最大重试</label><input id="cfgRetries" type="number" min="0" max="5" /></div>
+        <div><label>网关 API Key（逗号分隔）</label><input id="cfgKeys" placeholder="留空=不校验" /></div>
+        <div style="flex:0 0 150px"><label>&nbsp;</label><button class="primary" style="width:100%" onclick="saveCfg()">保存设置</button></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div style="flex:0 0 200px"><label>&nbsp;</label><button style="width:100%" onclick="runDaily()">立即执行签到任务</button></div>
+        <div class="hint" id="dailyState" style="align-self:center"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>日志</h2>
+    <pre id="logOut">加载中…</pre>
+  </section>
+</main>
+
+<footer style="max-width:1220px;margin:0 auto;padding:0 28px 40px;color:#65788c;font-size:11.5px;line-height:1.7">
+  <div style="border-top:1px solid var(--line);padding-top:14px">
+    免责声明：本项目与科大讯飞无任何从属关系，仅为了与自己账号的互操作性、供个人使用。
+    请勿用于滥用、转售或压垮上游服务。签名常量取自官方客户端内置常量，仅用于与账号服务通信。
+  </div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let STATE = null;
+const $ = (id) => document.getElementById(id);
+
+function toast(msg, err){
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (err ? ' err' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = 'toast', 3200);
+}
+
+async function api(path, opts){
+  const res = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{}));
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch(e) { data = text; }
+  if(!res.ok){
+    const detail = data && data.detail ? data.detail : text;
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  return data;
+}
+
+function fmtTs(ts){
+  if(!ts) return '—';
+  const d = new Date(ts * 1000);
+  return d.toLocaleString('zh-CN', {hour12:false});
+}
+
+function copyText(text){
+  navigator.clipboard.writeText(text).then(() => toast('已复制'), () => toast('复制失败', true));
+}
+
+function switchTab(which){
+  $('tabSms').classList.toggle('active', which === 'sms');
+  $('tabTok').classList.toggle('active', which === 'tok');
+  $('paneSms').style.display = which === 'sms' ? '' : 'none';
+  $('paneTok').style.display = which === 'tok' ? '' : 'none';
+}
+
+async function load(){
+  try{
+    STATE = await api('admin/api/state');
+    render();
+    loadModels(0);
+    loadTasks();
+    loadPool();
+    loadLogs();
+  }catch(e){ toast('加载失败：' + e.message, true); }
+}
+
+function render(){
+  const s = STATE;
+  const usable = s.accounts.filter(a => a.enabled && a.state !== 'invalid').length;
+  const points = s.accounts.reduce((sum, a) => sum + (Number(a.points) || 0), 0);
+  $('mAccounts').textContent = s.accounts.length;
+  $('mUsable').textContent = usable;
+  $('mPoints').textContent = points.toLocaleString();
+  $('mReqs').textContent = `${s.usage.requests||0} / ${s.usage.ok||0} / ${s.usage.fail||0}`;
+  $('mTokens').textContent = `${s.usage.tokens_in||0} / ${s.usage.tokens_out||0}`;
+  $('srvTime').textContent = s.server_time;
+
+  const body = $('accBody');
+  if(!s.accounts.length){
+    body.innerHTML = '<tr><td colspan="8" class="hint">还没有账号，用下面的短信登录添加。</td></tr>';
+  }else{
+    body.innerHTML = s.accounts.map(a => {
+      const cls = a.state === 'invalid' ? 'bad' : (a.enabled ? 'ok' : 'idle');
+      const label = a.state === 'invalid' ? '失效' : (a.enabled ? '正常' : '停用');
+      return `<tr>
+        <td>${esc(a.note||'-')}${a.phone ? `<div class="hint mono">${esc(a.phone)}</div>` : ''}</td>
+        <td><span class="dot ${cls}"></span>${label}</td>
+        <td class="mono">${esc(a.session)}</td>
+        <td class="mono hint">${esc(a.devid || '(未生成)')}</td>
+        <td class="mono">${a.points === null || a.points === undefined ? '—' : Number(a.points).toLocaleString()}
+            <div class="hint">${a.points_at ? fmtTs(a.points_at) : ''}</div></td>
+        <td class="hint">${a.cooldown_left ? `<span style="color:#ffb020">冷却 ${a.cooldown_left}s</span>` : '—'}</td>
+        <td class="hint" style="max-width:240px">${esc((a.last_error||'').slice(0,120))}${a.cooldown_reason ? `<div class="hint">${esc(a.cooldown_reason.slice(0,60))}</div>` : ''}</td>
+        <td>
+          <button onclick="act('${a.id}','balance')">刷新积分</button>
+          <button onclick="toggle('${a.id}',${a.enabled ? 'false' : 'true'})">${a.enabled ? '停用' : '启用'}</button>
+          <button onclick="act('${a.id}','reset')">重置状态</button>
+          ${a.cooldown_left ? `<button onclick="clearCd('${a.id}')">解除冷却</button>` : ''}
+          <button onclick="rebindIdentity('${a.id}')">换设备</button>
+          <button class="danger" onclick="del('${a.id}')">删除</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  const baseDir = location.pathname.replace(/\/[^/]*$/, '/');
+  const apiBase = location.origin + baseDir + 'v1';
+  $('baseUrl').value = apiBase;
+  $('keyView').value = (s.api_keys && s.api_keys[0]) || '(未设置，任意 key 均可)';
+  $('modelList').textContent = (s.models || []).join(' · ') || '(暂无，需有效账号)';
+  const model = (s.models && s.models[0]) || s.default_model || 'imodel/spark-x';
+  const key = (s.api_keys && s.api_keys[0]) || 'any';
+  $('curlExample').textContent =
+`curl ${apiBase}/chat/completions \\
+  -H "Authorization: Bearer ${key}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"${model}","stream":true,
+       "messages":[{"role":"user","content":"你好"}]}'`;
+  $('cfgDaily').value = s.daily_time || '08:45';
+  $('cfgBal').value = s.balance_interval_min || 30;
+  $('cfgModel').value = s.default_model || '';
+  $('cfgFallback').value = s.fallback_model || '';
+  $('cfgIdentity').value = s.identity_mode || 'per_account';
+  $('cfgStrategy').value = s.strategy || 'balance';
+  $('cfgCooldown').value = s.cooldown_seconds || 300;
+  $('cfgRetries').value = s.max_retries === undefined ? 2 : s.max_retries;
+  $('cfgKeys').value = (s.api_keys || []).join(',');
+  const ds = s.daily_state || {};
+  $('dailyState').textContent = ds.last ? `上次签到 ${ds.last.at} · ${ds.last.ok ? '成功' : '失败'}` : '尚未执行签到';
+}
+
+function esc(v){
+  return String(v == null ? '' : v).replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function fmtNum(n){
+  if(n === null || n === undefined) return '—';
+  const v = Number(n);
+  if(!isFinite(v)) return '—';
+  return v.toLocaleString('zh-CN') + (v >= 1024 ? ` (${v >= 1048576 ? (v/1048576).toFixed(v%1048576?1:0)+'M' : Math.round(v/1024)+'K'})` : '');
+}
+
+let MODEL_FILTER = 'all';
+let MODEL_ROWS = [];
+
+function setModelFilter(which){
+  MODEL_FILTER = which;
+  const map = {all:'mfAll', online:'mfOn', offline:'mfOff'};
+  ['mfAll','mfOn','mfOff'].forEach(id => $(id).classList.toggle('active', id === map[which]));
+  renderModels();
+}
+
+function renderModels(){
+  const body = $('modelBody');
+  const all = MODEL_ROWS;
+  const on = all.filter(m => m.online);
+  const off = all.filter(m => !m.online);
+  $('mfAllN').textContent = all.length;
+  $('mfOnN').textContent = on.length;
+  $('mfOffN').textContent = off.length;
+  const rows = MODEL_FILTER === 'online' ? on : (MODEL_FILTER === 'offline' ? off : all);
+  if(!rows.length){
+    body.innerHTML = `<tr><td colspan="10" class="hint">${all.length ? '该分组没有模型' : '上游未返回模型（账号失效或号池为空）'}</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(m => {
+    const online = !!m.online;
+    const probe = m.last_probe
+      ? `<div class="hint">${m.probe_ok ? '✅' + (m.ttft_ms ? ' ' + m.ttft_ms + 'ms' : '') : '❌'} ${new Date(m.last_probe*1000).toLocaleString('zh-CN',{hour12:false})}</div>`
+      : '';
+    const caps = [m.reasoning?'推理':'', m.tool_call?'工具':'', m.attachment?'附件':'',
+                  (m.protocol && m.protocol !== 'openai_chat' && m.protocol !== 'openai') ? m.protocol : ''].filter(Boolean).join(' · ') || '—';
+    return `<tr>
+      <td><span class="dot ${online?'ok':'idle'}"></span>${online?'上线':'下线'}</td>
+      <td class="mono">${esc(m.id)}${m.is_default_model?' <span class="pill">默认</span>':''}${m.is_default_small_model?' <span class="pill">默认小</span>':''}</td>
+      <td class="hint">${esc(m.name || '—')}</td>
+      <td class="mono">${fmtNum(m.context)}</td>
+      <td class="mono">${fmtNum(m.max_output)}</td>
+      <td class="hint">${caps}</td>
+      <td class="mono">${esc(m.ratio || '—')}</td>
+      <td class="hint">${m.first_seen ? fmtTs(m.first_seen) : '—'}</td>
+      <td class="hint">${m.last_seen ? fmtTs(m.last_seen) : '—'}${probe}${m.probe_error ? `<div class="hint" style="color:#ff8080">${esc(String(m.probe_error).slice(0,60))}</div>` : ''}</td>
+      <td>
+        <button onclick="probeModel('${esc(m.raw_id)}')">测活</button>
+        <button onclick="copyText('${esc(m.id)}')">复制</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function probeModel(rawId){
+  toast('测活中，会消耗少量积分…');
+  try{
+    const r = await api('admin/api/models/' + encodeURIComponent(rawId) + '/probe', {method:'POST'});
+    if(r.ok){
+      toast(`✅ ${rawId} 可用 · ${r.ms}ms · 扣 ${r.points ?? '?'} 分`);
+    }else{
+      toast(`❌ ${rawId} 不可用：${r.error}`, true);
+    }
+    loadModels(0);
+  }catch(e){ toast('测活失败：' + e.message, true); }
+}
+
+async function loadModels(force){
+  const body = $('modelBody');
+  if(!MODEL_ROWS.length) body.innerHTML = '<tr><td colspan="10" class="hint">读取中…</td></tr>';
+  try{
+    const r = await api('admin/api/models' + (force ? '?refresh=1' : ''));
+    MODEL_ROWS = r.models || [];
+    $('modelMeta').textContent = MODEL_ROWS.length
+      ? `共 ${MODEL_ROWS.length} 个：上线 ${r.online} · 下线 ${r.offline} ｜ 列表时间 ${r.fetched_at ? new Date(r.fetched_at*1000).toLocaleString('zh-CN',{hour12:false}) : '—'}（下线=曾经出现过、本次拉取未返回）`
+      : '需要有效账号才能拉取';
+    renderModels();
+  }catch(e){
+    body.innerHTML = `<tr><td colspan="10" class="hint">读取失败：${esc(e.message)}</td></tr>`;
+  }
+}
+
+let POOL_POLLING = null;
+
+async function loadPool(){
+  try{
+    const d = await api('admin/api/pool');
+    const c = d.config || {};
+    $('pBase').value = c.base_url || '';
+    $('pProject').value = c.project_id || '';
+    $('pUser').value = c.username || '';
+    $('pPass').placeholder = c.password_set ? ('已保存 ' + c.password + '（留空不修改）') : '未设置';
+    $('pPathLogin').value = c.path_login || '';
+    $('pPathPhone').value = c.path_get_phone || '/api/getPhone';
+    $('pPathCode').value = c.path_get_code || '/api/getCode';
+    $('pPathRelease').value = c.path_release || '/api/release';
+    $('pPoll').value = c.poll_interval || 3;
+    $('pTimeout').value = c.code_timeout || 120;
+    $('pConc').value = c.concurrency || 1;
+    $('pPrefix').value = c.note_prefix || '接码';
+    $('pAttempts').value = c.attempts || 2;
+    $('pBlock').value = c.block_prefixes || '192';
+    $('pPrefer').value = c.prefer_prefixes || '';
+    $('pToken').placeholder = c.token_set ? ('已保存 ' + c.token + '（留空不修改）') : '未设置';
+    const j = d.job || {};
+    const running = !!j.running;
+    $('pMeta').textContent = running
+      ? `运行中：${j.done}/${j.total} · 成功 ${j.ok} · 失败 ${j.fail}${j.current ? ' · 当前 ' + j.current : ''}`
+      : (j.total ? `上次：${j.done}/${j.total} · 成功 ${j.ok} · 失败 ${j.fail}` : '未运行');
+    $('pLog').textContent = (d.logs && d.logs.length) ? d.logs.join('\n') : '（未运行）';
+    $('pLog').scrollTop = $('pLog').scrollHeight;
+    if(running && !POOL_POLLING){ POOL_POLLING = setInterval(loadPool, 2500); }
+    if(!running && POOL_POLLING){ clearInterval(POOL_POLLING); POOL_POLLING = null; load(); }
+  }catch(e){ /* ignore */ }
+}
+
+async function savePool(){
+  try{
+    await api('admin/api/pool/config', {method:'POST', body: JSON.stringify({
+      base_url: $('pBase').value.trim(),
+      token: $('pToken').value.trim(),
+      username: $('pUser').value.trim(),
+      password: $('pPass').value.trim(),
+      project_id: $('pProject').value.trim(),
+      path_login: $('pPathLogin').value.trim(),
+      path_balance: '/Balance/?token={token}&type=json',
+      path_get_phone: $('pPathPhone').value.trim(),
+      path_get_code: $('pPathCode').value.trim(),
+      path_release: $('pPathRelease').value.trim(),
+      poll_interval: Number($('pPoll').value) || 3,
+      code_timeout: Number($('pTimeout').value) || 120,
+      concurrency: Number($('pConc').value) || 1,
+      note_prefix: $('pPrefix').value.trim() || '接码',
+      attempts: Number($('pAttempts').value) || 2,
+      block_prefixes: $('pBlock').value.trim(),
+      prefer_prefixes: $('pPrefer').value.trim(),
+    })});
+    toast('接码配置已保存');
+    $('pToken').value = '';
+    $('pPass').value = '';
+    loadPool();
+  }catch(e){ toast('保存失败：' + e.message, true); }
+}
+
+async function poolBalance(){
+  try{
+    const r = await api('admin/api/pool/balance');
+    toast(r.ok ? ('平台余额：' + r.balance) : ('查询失败：' + (r.error || '')), !r.ok);
+  }catch(e){ toast(e.message, true); }
+}
+
+async function testPool(){
+  const out = $('pTest');
+  out.style.display = '';
+  out.textContent = '测试中…';
+  try{
+    const r = await api('admin/api/pool/test', {method:'POST'});
+    out.textContent = JSON.stringify(r, null, 2);
+    toast(r.phone ? ('取号成功：' + r.phone) : '平台有返回，但没解析出手机号', !r.phone);
+  }catch(e){ out.textContent = '失败：' + e.message; toast(e.message, true); }
+}
+
+async function startPool(){
+  const count = Number($('pCount').value) || 1;
+  try{
+    await api('admin/api/pool/start', {method:'POST', body: JSON.stringify({count})});
+    toast(`已启动，目标 ${count} 个`);
+    loadPool();
+  }catch(e){ toast('启动失败：' + e.message, true); }
+}
+
+async function stopPool(){
+  try{
+    await api('admin/api/pool/stop', {method:'POST'});
+    toast('已请求停止');
+    loadPool();
+  }catch(e){ toast(e.message, true); }
+}
+
+let TASK_STATE = {accounts: [], expanded: null};
+
+async function loadTasks(){
+  const body = $('taskBody');
+  if(!TASK_STATE.accounts.length) body.innerHTML = '<tr><td colspan="6" class="hint">读取中…</td></tr>';
+  try{
+    const d = await api('admin/api/tasks');
+    TASK_STATE.accounts = d.accounts || [];
+    const last = d.last_run;
+    $('taskMeta').textContent = last
+      ? `上次执行 ${last.at} · ${last.accounts} 个账号 · 领取 ${last.claimed} 项（单账号任务总分 ${d.task_total}）`
+      : `单账号任务总分 ${d.task_total}`;
+    if(!TASK_STATE.accounts.length){
+      body.innerHTML = '<tr><td colspan="6" class="hint">号池为空</td></tr>';
+      return;
+    }
+    body.innerHTML = TASK_STATE.accounts.map(a => {
+      const rows = a.rows || [];
+      const done = rows.filter(r => r.done).length;
+      const daily = a.ok ? '可刷新' : '—';
+      const badge = a.ok ? `<span class="pill">${done}/${rows.length} 已完成</span>` : `<span class="pill" style="color:#ff8080">${esc((a.error||'查询失败').slice(0,26))}</span>`;
+      return `<tr>
+        <td>${esc(a.note||'-')}<div class="hint mono">${esc(a.phone||'')}</div></td>
+        <td class="mono">${a.points == null ? '—' : Number(a.points).toLocaleString()}</td>
+        <td class="hint">${daily}</td>
+        <td>${badge}</td>
+        <td class="mono">${a.ok ? (Number(a.earned||0).toLocaleString() + ' / ' + Number(a.total||0).toLocaleString()) : '—'}</td>
+        <td>
+          <button class="primary" onclick="runTasksOne('${a.id}')">跑任务</button>
+          <button onclick="toggleDetail('${a.id}')">任务明细</button>
+        </td>
+      </tr>` + (TASK_STATE.expanded === a.id ? `<tr><td colspan="6" style="background:#0d141c">${renderTaskDetail(a)}</td></tr>` : '');
+    }).join('');
+  }catch(e){
+    body.innerHTML = `<tr><td colspan="6" class="hint">读取失败：${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderTaskDetail(a){
+  const rows = a.rows || [];
+  if(!rows.length) return `<div class="hint">${esc(a.error || '无任务数据')}</div>`;
+  return '<table style="margin:0"><thead><tr><th>分组</th><th>任务</th><th>分值</th><th>状态</th><th style="width:100px">操作</th></tr></thead><tbody>' +
+    rows.map(r => `<tr>
+      <td class="hint">${esc(r.group)}</td>
+      <td>${esc(r.title)}</td>
+      <td class="mono">${Number(r.points).toLocaleString()}</td>
+      <td>${r.done ? '<span class="dot ok"></span>已领取' : '<span class="dot idle"></span>未领取'}</td>
+      <td>${r.done ? '' : `<button onclick="claimTask('${a.id}','${r.key}')">领取</button>`}</td>
+    </tr>`).join('') + '</tbody></table>';
+}
+
+function toggleDetail(id){
+  TASK_STATE.expanded = TASK_STATE.expanded === id ? null : id;
+  loadTasks();
+}
+
+async function runTasksOne(id){
+  toast('正在执行：每日积分 + 领取任务…');
+  try{
+    const d = await api('admin/api/tasks/run', {method:'POST', body: JSON.stringify({account_id: id, daily: true})});
+    const r = (d.results || [])[0] || {};
+    const claimed = (r.claims || []).filter(c => c.ok).length;
+    const after = r.after || {};
+    toast(r.error ? ('失败：' + r.error) : `完成：领取 ${claimed} 项，已领 ${after.earned ?? '?'}/${after.total ?? '?'}`, !!r.error);
+    TASK_STATE.expanded = id;
+    loadTasks(); load();
+  }catch(e){ toast('执行失败：' + e.message, true); }
+}
+
+async function runTasksAll(){
+  toast('正在对全部账号执行任务…');
+  try{
+    const d = await api('admin/api/tasks/run', {method:'POST', body: JSON.stringify({daily: true})});
+    const results = d.results || [];
+    const claimed = results.reduce((n, r) => n + (r.claims || []).filter(c => c.ok).length, 0);
+    const failed = results.filter(r => r.error).length;
+    toast(`完成：${results.length} 个账号，领取 ${claimed} 项${failed ? '，失败 ' + failed : ''}`, failed > 0);
+    loadTasks(); load();
+  }catch(e){ toast('执行失败：' + e.message, true); }
+}
+
+async function claimTask(id, key){
+  try{
+    const d = await api('admin/api/tasks/claim', {method:'POST', body: JSON.stringify({account_id: id, key})});
+    toast(d.ok ? '领取成功' : ('领取失败：' + ((d.claim||{}).error || '')), !d.ok);
+    loadTasks();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function loadLogs(){
+  try{
+    const logs = await api('admin/api/logs?lines=60');
+    const usage = (logs['usage.log'] || []).slice(-25).join('\n') || '(空)';
+    const daily = (logs['daily.log'] || []).slice(-6).join('\n') || '';
+    $('logOut').textContent = '--- usage.log ---\n' + usage + (daily ? '\n\n--- daily.log ---\n' + daily : '');
+  }catch(e){ /* ignore */ }
+}
+
+async function act(id, kind){
+  try{
+    if(kind === 'balance'){
+      const r = await api(`admin/api/accounts/${id}/balance`, {method:'POST'});
+      toast(r.ok ? `积分：${r.points ?? '未知'}` : '刷新失败：' + (r.error||''), !r.ok);
+    }else if(kind === 'reset'){
+      await api(`admin/api/accounts/${id}`, {method:'PATCH', body: JSON.stringify({reset:true})});
+      toast('已重置状态');
+    }
+    load();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function importAccounts(){
+  const text = $('impText').value.trim();
+  if(!text) return toast('先粘贴 session', true);
+  const out = $('impResult');
+  out.style.display = '';
+  out.textContent = '导入中…';
+  try{
+    const r = await api('admin/api/accounts/import', {method:'POST', body: JSON.stringify({
+      text,
+      validate: $('impValidate').checked,
+      note_prefix: $('impPrefix').value.trim(),
+    })});
+    const lines = [];
+    lines.push(`✅ 新增 ${r.imported} · 重复 ${r.duplicated} · 无效 ${r.invalid} · 当前总数 ${r.total_accounts}`);
+    (r.items || []).forEach(i => lines.push(`  + ${i.note}  ${i.session}  积分 ${i.points ?? '?'}`));
+    (r.duplicated_items || []).forEach(i => lines.push(`  = ${i.note}  ${i.session}  跳过（${i.reason}）`));
+    (r.invalid_items || []).forEach(i => lines.push(`  ! ${i.note}  ${i.session}  ${i.error}`));
+    out.textContent = lines.join('\n');
+    toast(`导入完成：新增 ${r.imported} 个`);
+    $('impText').value = '';
+    load(); loadTasks();
+  }catch(e){
+    out.textContent = '失败：' + e.message;
+    toast('导入失败：' + e.message, true);
+  }
+}
+
+async function rebindAll(){
+  try{
+    const r = await api('admin/api/identity/rebind-all', {method:'POST'});
+    toast(`补齐 ${r.created} 个账号（共 ${r.total}）`);
+    load();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function rebindIdentity(id){
+  if(!confirm('给该账号换一套新的设备标识？')) return;
+  try{
+    const r = await api(`admin/api/accounts/${id}/identity/rebind`, {method:'POST'});
+    toast('已换设备标识：' + (r.devid || ''));
+    load();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function clearCd(id){
+  try{
+    await api(`admin/api/accounts/${id}/cooldown/clear`, {method:'POST'});
+    toast('已解除冷却'); load();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function toggle(id, enabled){
+  try{
+    await api(`admin/api/accounts/${id}`, {method:'PATCH', body: JSON.stringify({enabled})});
+    load();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function del(id){
+  if(!confirm('删除该账号？')) return;
+  try{
+    await api(`admin/api/accounts/${id}`, {method:'DELETE'});
+    toast('已删除'); load();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function smsSend(){
+  const phone = $('smsPhone').value.trim();
+  if(!phone) return toast('请填手机号', true);
+  try{
+    const r = await api('admin/api/sms/send', {method:'POST', body: JSON.stringify({phone})});
+    toast('验证码已发送');
+    $('smsCode').focus();
+    console.log('msgid', r.msgid);
+  }catch(e){ toast('发码失败：' + e.message, true); }
+}
+
+async function smsLogin(){
+  const phone = $('smsPhone').value.trim();
+  const code = $('smsCode').value.trim();
+  const note = $('smsNote').value.trim();
+  if(!phone || !code) return toast('手机号和验证码都要填', true);
+  try{
+    const r = await api('admin/api/sms/login', {method:'POST', body: JSON.stringify({phone, code, note})});
+    toast('登录成功' + (r.points != null ? `，积分 ${r.points}` : ''));
+    $('smsCode').value = '';
+    load();
+  }catch(e){ toast('登录失败：' + e.message, true); }
+}
+
+async function addToken(){
+  const session = $('tokSession').value.trim();
+  const note = $('tokNote').value.trim();
+  if(!session) return toast('请粘贴 session', true);
+  try{
+    await api('admin/api/accounts', {method:'POST', body: JSON.stringify({session, note})});
+    toast('已添加'); $('tokSession').value = ''; load();
+  }catch(e){ toast('添加失败：' + e.message, true); }
+}
+
+async function runTest(){
+  const prompt = $('testPrompt').value.trim() || '回复 OK';
+  const out = $('testOut');
+  out.style.display = '';
+  out.textContent = '请求中…';
+  try{
+    const r = await api('admin/api/test', {method:'POST', body: JSON.stringify({prompt})});
+    if(r.ok){
+      out.textContent = `✅ ${r.model} 可用\n首包：${r.ttft_ms} ms\n账号：${r.account || '-'}\n首包内容：${r.head || '(空)'}`;
+      toast(`测活成功：${r.model} 首包 ${r.ttft_ms}ms`);
+    }else{
+      out.textContent = `❌ ${r.model || ''} 不可用（${r.kind || ''}，${r.ms || 0}ms）\n${r.error || ''}`;
+      toast('测活失败：' + (r.error || ''), true);
+    }
+  }catch(e){ out.textContent = '失败：' + e.message; }
+  load();
+}
+
+async function saveCfg(){
+  try{
+    await api('admin/api/config', {method:'POST', body: JSON.stringify({
+      daily_time: $('cfgDaily').value.trim(),
+      balance_interval_min: Number($('cfgBal').value) || 30,
+      default_model: $('cfgModel').value.trim(),
+      fallback_model: $('cfgFallback').value.trim(),
+      identity_mode: $('cfgIdentity').value,
+      strategy: $('cfgStrategy').value,
+      cooldown_seconds: Number($('cfgCooldown').value) || 300,
+      max_retries: Number($('cfgRetries').value) || 0,
+      api_keys: $('cfgKeys').value.split(',').map(s => s.trim()).filter(Boolean),
+    })});
+    toast('设置已保存'); load();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function runDaily(){
+  toast('正在执行签到任务…');
+  try{
+    const r = await api('admin/api/daily/run', {method:'POST'});
+    toast(r.ok ? '签到完成' : '签到失败：' + (r.error || '见日志'), !r.ok);
+    if(r.output) console.log(r.output);
+    load();
+  }catch(e){ toast(e.message, true); }
+}
+
+load();
+setInterval(() => { if(!document.hidden) load(); }, 30000);
+</script>
+</body>
+</html>

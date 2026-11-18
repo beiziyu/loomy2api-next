@@ -1,0 +1,21 @@
+# 运行时敏感文件
+config.json
+*.session
+accounts.json
+logs/
+.sms_state.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
+
+# docker
+data/
+registrar.json
