@@ -494,7 +494,9 @@ def run_cli(count: int, out_path: str = "") -> int:
 # ------------------------------------------------------------------ GUI（本地网页版）
 
 PAGE = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Loomy 本地注册器</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<title>Loomy 本地注册器</title>
 <style>
 :root{--bg:#0b0f14;--panel:#121820;--line:#233040;--text:#e6edf6;--muted:#8fa3b8;--accent:#4ea8ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);
@@ -517,7 +519,8 @@ th{color:var(--muted);background:#171f29}.mono{font-family:ui-monospace,Menlo,mo
 .hint{color:var(--muted);font-size:12px}.ok{color:#3ddc97}.bad{color:#ff5d5d}
 </style></head><body>
 <header><h1>🌙 Loomy 本地注册器</h1><span class="tag">注册在本机 · 只上传 session</span>
-<span class="tag" id="bal">余额 -</span><span style="flex:1"></span><span class="hint" id="st">就绪</span></header>
+<span class="tag" id="bal">余额 -</span><span style="flex:1"></span><button onclick="ping()" style="padding:6px 10px">自检</button>
+<span class="hint" id="st">就绪</span></header>
 <main>
 <section><h2>接码平台</h2><div class="card">
 <div class="row">
@@ -572,14 +575,26 @@ function render(){const b=$('rows');if(!RESULTS.length){b.innerHTML='<tr><td col
 b.innerHTML=RESULTS.map(r=>`<tr><td>${r.note}</td><td class="mono">${r.phone}</td><td class="mono">${r.session.slice(0,12)}…</td><td class="mono">${r.points??'-'}</td></tr>`).join('')}
 function payload(){const o={};F.forEach(k=>{let v=$(k).value.trim();if(['count','concurrency','code_timeout','attempts'].includes(v))v=Number(v);
 if(['count','concurrency','code_timeout','attempts'].includes(k))v=Number(v)||0;o[k]=v});return o}
-async function save(){await api('api/save',{method:'POST',body:JSON.stringify(payload())});$('st').textContent='配置已保存'}
-async function start(){await save();const p=payload();await api('api/start',{method:'POST',body:JSON.stringify(p)});$('st').textContent='注册中';load()}
-async function stop(){await api('api/stop',{method:'POST'});$('st').textContent='已请求停止'}
+async function save(){
+ try{await api('api/save',{method:'POST',body:JSON.stringify(payload())});$('st').textContent='配置已保存';return true}
+ catch(e){$('st').textContent='保存失败：'+e.message;alert('保存失败：'+e.message);return false}}
+async function start(){
+ try{
+  $('st').textContent='正在提交…';
+  await api('api/save',{method:'POST',body:JSON.stringify(payload())});
+  const r=await api('api/start',{method:'POST',body:JSON.stringify(payload())});
+  $('st').textContent='已提交，目标 '+(r.total||'?')+' 个，等待首个结果…';
+  load();
+ }catch(e){$('st').textContent='启动失败：'+e.message;alert('启动失败：'+e.message+'；若提示 409 说明已有任务在跑，点停止后再试')}}
+async function stop(){
+ try{await api('api/stop',{method:'POST'});$('st').textContent='已请求停止'}
+ catch(e){$('st').textContent='停止失败：'+e.message}}
 async function refreshBalance(){
  try{const d=await api('api/balance',{method:'POST'});
    $('bal').textContent='余额 '+(d.balance||d.error||'-');
    $('st').textContent=d.ok?('余额已更新：'+d.balance):('查余额失败：'+(d.error||''));}
  catch(e){$('st').textContent='查余额请求失败：'+e.message}}
+function ping(){fetch('api/state').then(r=>r.json()).then(d=>{$('st').textContent='自检通过：接口可达，build 2026-11-19d'});}
 function exportFile(){if(!RESULTS.length){$('st').textContent='还没有成功的 session';return}location.href='api/export'}
 function copyAll(){const t=RESULTS.map(r=>r.note+'|'+r.session).join('\\n');navigator.clipboard.writeText(t);$('st').textContent='已复制 '+RESULTS.length+' 条'}
 load();
@@ -592,13 +607,18 @@ class _Handler(BaseHTTPRequestHandler):
     logs: List[str] = []
     total = 0
 
-    def log_message(self, *args):  # noqa: D102
-        return
+    def log_message(self, fmt, *args):  # noqa: D102
+        try:
+            print("[http] %s %s" % (self.command, self.path), flush=True)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _send(self, code: int, body: Any, ctype: str = "application/json; charset=utf-8") -> None:
         raw = body.encode("utf-8") if isinstance(body, str) else json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
