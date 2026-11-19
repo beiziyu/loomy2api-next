@@ -47,6 +47,7 @@ from urllib import request as urlrequest
 
 APP_TITLE = "Loomy 本地注册器"
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "registrar.json")
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 ACCOUNT_BASE = "https://account.xfinfr.com"
 SEND_CODE_PATH = "/login/phone/sendMsgCode"
@@ -177,9 +178,13 @@ class SmsPlatform:
             data = json.loads(raw)
             inner = data.get("data")
             if isinstance(inner, dict):
-                return str(inner.get("money") or inner.get("balance") or "")
-            if inner:
-                return str(inner)
+                money = inner.get("money") or inner.get("balance")
+                if money is not None:
+                    return str(money)
+            if isinstance(inner, str) and inner:
+                return inner
+            if inner is None:
+                return "平台未返回余额(data=null)"
         except Exception:  # noqa: BLE001
             pass
         return raw[:60]
@@ -320,6 +325,26 @@ def check_session(session: str) -> Optional[int]:
 
 # ------------------------------------------------------------------ 注册任务
 
+def saved_path() -> str:
+    return os.path.join(HERE, "loomy_sessions_%s.txt" % time.strftime("%Y%m%d"))
+
+
+def append_result_file(item: Dict[str, Any]) -> str:
+    """每成功一个就立刻追加到本地文件，避免关闭页面/崩溃丢号。"""
+    path = saved_path()
+    try:
+        new_file = not os.path.exists(path)
+        with open(path, "a", encoding="utf-8") as handle:
+            if new_file:
+                handle.write("# %s 自动保存（备注|session），可直接粘到服务端“批量导入 session”\n"
+                             % time.strftime("%F %T"))
+            handle.write("%s|%s\n" % (item["note"], item["session"]))
+        os.chmod(path, 0o600)
+    except Exception:  # noqa: BLE001
+        pass
+    return path
+
+
 class Registrar:
     def __init__(self, cfg: Dict[str, Any], log):
         self.cfg = cfg
@@ -345,10 +370,16 @@ class Registrar:
                 return
             phone = ""
             try:
-                for _ in range(3):
+                prefer = [x.strip() for x in str(self.cfg.get("prefer_prefixes") or "").split(",") if x.strip()]
+                for _ in range(6):
                     phone = self.platform.get_phone()
                     if self._blocked(phone):
                         self.log("[%d] 屏蔽号段 %s，换号" % (index, phone))
+                        self.platform.release(phone)
+                        phone = ""
+                        continue
+                    if prefer and not any(phone.startswith(x) for x in prefer):
+                        self.log("[%d] 非优先号段 %s（prefer=%s），换号" % (index, phone, ",".join(prefer)))
                         self.platform.release(phone)
                         phone = ""
                         continue
@@ -377,7 +408,9 @@ class Registrar:
                 with self.lock:
                     self.ok += 1
                     self.results.append(item)
-                self.log("[%d] ✅ %s 登录成功（积分 %s）" % (index, phone, points))
+                saved = append_result_file(item)
+                self.log("[%d] ✅ %s 登录成功（积分 %s）｜已落盘 %s"
+                         % (index, phone, points, os.path.basename(saved)))
                 return
             except Exception as exc:  # noqa: BLE001
                 last = str(exc)
@@ -480,7 +513,7 @@ th{color:var(--muted);background:#171f29}.mono{font-family:ui-monospace,Menlo,mo
  <div style="flex:2"><label>平台地址</label><input id="base_url"></div>
  <div><label>项目 ID</label><input id="project_id"></div>
  <div><label>平台账号</label><input id="username"></div>
- <div><label>平台密码</label><input id="password" type="password"></div>
+ <div><label>平台密码（已保存则留空不改）</label><input id="password" type="password" placeholder="留空则沿用已保存的密码"></div>
 </div></div></section>
 <section><h2>注册参数</h2><div class="card">
 <div class="row">
@@ -511,6 +544,7 @@ th{color:var(--muted);background:#171f29}.mono{font-family:ui-monospace,Menlo,mo
 <table><thead><tr><th>备注</th><th>手机号</th><th>session</th><th>积分</th></tr></thead>
 <tbody id="rows"><tr><td colspan="4" class="hint">暂无</td></tr></tbody></table></section>
 <section><h2>日志</h2><pre id="log">（未开始）</pre></section>
+<div class="hint" style="margin-top:10px">build __BUILD__ · 若看到旧界面请按 Cmd/Ctrl+Shift+R 强制刷新</div>
 </main>
 <script>
 const F=['base_url','project_id','username','password','count','concurrency','code_timeout','attempts','note_prefix','block_prefixes'];
@@ -521,6 +555,7 @@ const t=await r.text();let d;try{d=t?JSON.parse(t):null}catch(e){d=t}if(!r.ok)th
 async function load(){const d=await api('api/state');F.forEach(k=>{if(d.config[k]!==undefined&&!(k==='password'&&d.config[k]==='***'))$(k).value=d.config[k]});
 $('bal').textContent='余额 '+(d.balance||'-');$('st').textContent=d.running?`注册中 ${d.done}/${d.total}`:(d.done?`完成 成功 ${d.ok} 失败 ${d.fail}`:'就绪');
 RESULTS=d.results||[];render();$('log').textContent=(d.logs||[]).join('\n')||'（未开始）';$('log').scrollTop=1e9;
+if(d.save_file)$('st').textContent='已自动保存到 '+d.save_file+(d.running?'（注册中）':'');
 if(d.running)setTimeout(load,1500)}
 function render(){const b=$('rows');if(!RESULTS.length){b.innerHTML='<tr><td colspan="4" class="hint">暂无</td></tr>';return}
 b.innerHTML=RESULTS.map(r=>`<tr><td>${r.note}</td><td class="mono">${r.phone}</td><td class="mono">${r.session.slice(0,12)}…</td><td class="mono">${r.points??'-'}</td></tr>`).join('')}
@@ -529,7 +564,11 @@ if(['count','concurrency','code_timeout','attempts'].includes(k))v=Number(v)||0;
 async function save(){await api('api/save',{method:'POST',body:JSON.stringify(payload())});$('st').textContent='配置已保存'}
 async function start(){await save();const p=payload();await api('api/start',{method:'POST',body:JSON.stringify(p)});$('st').textContent='注册中';load()}
 async function stop(){await api('api/stop',{method:'POST'});$('st').textContent='已请求停止'}
-async function refreshBalance(){const d=await api('api/balance');$('bal').textContent='余额 '+(d.balance||d.error||'-')}
+async function refreshBalance(){
+ try{const d=await api('api/balance',{method:'POST'});
+   $('bal').textContent='余额 '+(d.balance||d.error||'-');
+   $('st').textContent=d.ok?('余额已更新：'+d.balance):('查余额失败：'+(d.error||''));}
+ catch(e){$('st').textContent='查余额请求失败：'+e.message}}
 function exportFile(){if(!RESULTS.length){$('st').textContent='还没有成功的 session';return}location.href='api/export'}
 function copyAll(){const t=RESULTS.map(r=>r.note+'|'+r.session).join('\n');navigator.clipboard.writeText(t);$('st').textContent='已复制 '+RESULTS.length+' 条'}
 load();
@@ -553,17 +592,34 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    BUILD = "2026-11-19b"
+
+    def _page(self) -> str:
+        """把配置直接渲染进输入框，避免依赖前端回填/缓存。"""
+        import html as _html
+        page = PAGE.replace("__BUILD__", self.BUILD)
+        for key in ("base_url", "project_id", "username", "count", "concurrency",
+                    "code_timeout", "attempts", "note_prefix", "block_prefixes"):
+            value = _html.escape(str(self.cfg.get(key) if self.cfg.get(key) is not None else ""), quote=True)
+            page = page.replace('id="%s"' % key, 'id="%s" value="%s"' % (key, value), 1)
+        return page
+
     def do_GET(self) -> None:  # noqa: N802
         if self.path in ("/", "/index.html"):
-            self._send(200, PAGE, "text/html; charset=utf-8")
+            self._send(200, self._page(), "text/html; charset=utf-8")
             return
         if self.path.startswith("/api/export"):
             reg = self.__class__.reg
             results = getattr(reg, "results", []) if reg else []
-            if not results:
-                self._send(400, {"detail": "还没有成功的 session"})
-                return
             text = "".join("%s|%s\n" % (r["note"], r["session"]) for r in results)
+            if not text:
+                today = os.path.join(HERE, "loomy_sessions_%s.txt" % time.strftime("%Y%m%d"))
+                if os.path.exists(today):
+                    with open(today, encoding="utf-8") as handle:
+                        text = "".join(line for line in handle if not line.startswith("#"))
+                if not text:
+                    self._send(400, {"detail": "还没有成功的 session"})
+                    return
             filename = "loomy_sessions_%s.txt" % time.strftime("%Y%m%d_%H%M")
             raw = text.encode("utf-8")
             self.send_response(200)
@@ -583,6 +639,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "ok": getattr(reg, "ok", 0), "fail": getattr(reg, "fail", 0),
                 "done": getattr(reg, "done", 0), "total": self.total,
                 "results": getattr(reg, "results", []), "logs": self.logs[-200:],
+                "save_file": os.path.basename(saved_path()) if os.path.exists(saved_path()) else "",
             })
             return
         self._send(404, {"detail": "not found"})
@@ -595,8 +652,11 @@ class _Handler(BaseHTTPRequestHandler):
             payload = {}
         if self.path.startswith("/api/save"):
             for key in list(DEFAULT_CFG):
-                if key in payload:
-                    self.cfg[key] = payload[key]
+                if key not in payload:
+                    continue
+                if key == "password" and not str(payload.get(key) or "").strip():
+                    continue          # 留空 = 不改已保存的密码
+                self.cfg[key] = payload[key]
             save_cfg(self.cfg)
             self._send(200, {"ok": True})
             return
@@ -609,8 +669,11 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/start"):
             for key in list(DEFAULT_CFG):
-                if key in payload:
-                    self.cfg[key] = payload[key]
+                if key not in payload:
+                    continue
+                if key == "password" and not str(payload.get(key) or "").strip():
+                    continue          # 留空 = 不改已保存的密码
+                self.cfg[key] = payload[key]
             save_cfg(self.cfg)
             handler = self
 

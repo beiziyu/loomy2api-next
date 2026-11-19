@@ -19,3 +19,4 @@ venv/
 # docker
 data/
 registrar.json
+loomy_sessions_*.txt
