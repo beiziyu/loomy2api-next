@@ -340,6 +340,31 @@ def saved_path() -> str:
     return os.path.join(HERE, "loomy_sessions_%s.txt" % time.strftime("%Y%m%d"))
 
 
+def saved_count() -> int:
+    path = saved_path()
+    if not os.path.exists(path):
+        return 0
+    with open(path, encoding="utf-8") as handle:
+        return sum(1 for line in handle if line.strip() and not line.startswith("#"))
+
+
+def saved_all() -> List[str]:
+    path = saved_path()
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        return [line.strip() for line in handle if line.strip() and not line.startswith("#")]
+
+
+def saved_recent(limit: int = 30) -> List[str]:
+    path = saved_path()
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        lines = [line.strip() for line in handle if line.strip() and not line.startswith("#")]
+    return lines[-limit:]
+
+
 def append_result_file(item: Dict[str, Any]) -> str:
     """每成功一个就立刻追加到本地文件，避免关闭页面/崩溃丢号。"""
     path = saved_path()
@@ -365,6 +390,7 @@ class Registrar:
         self.fail = 0
         self.done = 0
         self.results: List[Dict[str, Any]] = []
+        self.current = ""
         self.lock = threading.Lock()
         self.platform = SmsPlatform(cfg)
 
@@ -398,6 +424,7 @@ class Registrar:
                 if not phone:
                     raise RuntimeError("取不到可用号码")
 
+                self.current = phone
                 identity = new_identity()
                 msgid = loomy_send_code(phone, identity)
                 self.log("[%d] %s 已发码，等待短信…" % (index, phone))
@@ -424,6 +451,7 @@ class Registrar:
                          % (index, phone, points, os.path.basename(saved)))
                 return
             except Exception as exc:  # noqa: BLE001
+                self.current = ""
                 last = str(exc)
                 self.log("[%d] 第 %d/%d 次失败：%s" % (index, attempt, attempts, last))
                 if phone:
@@ -519,7 +547,12 @@ th{color:var(--muted);background:#171f29}.mono{font-family:ui-monospace,Menlo,mo
 .hint{color:var(--muted);font-size:12px}.ok{color:#3ddc97}.bad{color:#ff5d5d}
 </style></head><body>
 <header><h1>🌙 Loomy 本地注册器</h1><span class="tag">注册在本机 · 只上传 session</span>
-<span class="tag" id="bal">余额 -</span><span style="flex:1"></span><button onclick="ping()" style="padding:6px 10px">自检</button>
+<span class="tag" id="bal">余额 -</span><span style="flex:1"></span>
+<span class="tag" id="statOk" style="color:#3ddc97">成功 0</span>
+<span class="tag" id="statFail" style="color:#ff5d5d">失败 0</span>
+<span class="tag" id="statProg">进度 0/0</span>
+<span class="tag mono" id="statCur">—</span>
+<button onclick="ping()" style="padding:6px 10px">自检</button>
 <span class="hint" id="st">就绪</span></header>
 <main>
 <section><h2>接码平台</h2><div class="card">
@@ -554,7 +587,7 @@ th{color:var(--muted);background:#171f29}.mono{font-family:ui-monospace,Menlo,mo
  把文件拿到服务端面板「批量导入 session」贴上即可（服务端会自动校验、去重、生成独立设备标识）。
 </div>
 </div></section>
-<section><h2>结果</h2>
+<section><h2>结果 <span class="hint" id="cnt" style="text-transform:none;letter-spacing:0"></span></h2>
 <table><thead><tr><th>备注</th><th>手机号</th><th>session</th><th>积分</th></tr></thead>
 <tbody id="rows"><tr><td colspan="4" class="hint">暂无</td></tr></tbody></table></section>
 <section><h2>日志</h2><pre id="log">（未开始）</pre></section>
@@ -567,8 +600,15 @@ const $=id=>document.getElementById(id);
 async function api(path,opt){const r=await fetch(path,Object.assign({headers:{'Content-Type':'application/json'}},opt||{}));
 const t=await r.text();let d;try{d=t?JSON.parse(t):null}catch(e){d=t}if(!r.ok)throw new Error((d&&d.detail)||t);return d}
 async function load(){const d=await api('api/state');F.forEach(k=>{if(d.config[k]!==undefined&&!(k==='password'&&d.config[k]==='***'))$(k).value=d.config[k]});
-$('bal').textContent='余额 '+(d.balance||'-');$('st').textContent=d.running?`注册中 ${d.done}/${d.total}`:(d.done?`完成 成功 ${d.ok} 失败 ${d.fail}`:'就绪');
-RESULTS=d.results||[];render();$('log').textContent=(d.logs||[]).join('\\n')||'（未开始）';$('log').scrollTop=1e9;
+$('bal').textContent='余额 '+(d.balance||'-');
+$('statOk').textContent='成功 '+(d.ok||0);
+$('statFail').textContent='失败 '+(d.fail||0);
+$('statProg').textContent='进度 '+(d.done||0)+'/'+(d.total||0);
+$('statCur').textContent=d.current||'—';
+$('st').textContent=d.running?'注册中…':(d.done?('本批完成：成功 '+d.ok+' 失败 '+d.fail):'就绪');
+RESULTS=d.results||[];
+$('cnt').textContent='本批成功 '+d.ok+' · 失败 '+d.fail+' · 进度 '+d.done+'/'+d.total+' ｜ 累计已落盘 '+(d.saved_total||0)+' 条 '+(d.save_file||'');
+render();$('log').textContent=(d.logs||[]).join('\\n')||'（未开始）';$('log').scrollTop=1e9;
 if(d.save_file)$('st').textContent='已自动保存到 '+d.save_file+(d.running?'（注册中）':'');
 if(d.running)setTimeout(load,1500)}
 function render(){const b=$('rows');if(!RESULTS.length){b.innerHTML='<tr><td colspan="4" class="hint">暂无</td></tr>';return}
@@ -625,6 +665,18 @@ class _Handler(BaseHTTPRequestHandler):
 
     BUILD = "2026-11-19d"
 
+    def _merged_results(self) -> List[Dict[str, Any]]:
+        """落盘累计 + 本批内存，按 session 去重（内存优先，带手机号和积分）。"""
+        merged: Dict[str, Dict[str, Any]] = {}
+        for line in saved_all():
+            note, _, session = line.partition("|")
+            if session:
+                merged[session] = {"note": note, "session": session, "phone": "", "points": None}
+        reg = self.__class__.reg
+        for item in (getattr(reg, "results", []) if reg else []):
+            merged[item["session"]] = item
+        return list(merged.values())
+
     def _page(self) -> str:
         """把配置直接渲染进输入框，避免依赖前端回填/缓存。"""
         import html as _html
@@ -640,8 +692,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, self._page(), "text/html; charset=utf-8")
             return
         if self.path.startswith("/api/export"):
-            reg = self.__class__.reg
-            results = getattr(reg, "results", []) if reg else []
+            results = self._merged_results()
             text = "".join("%s|%s\n" % (r["note"], r["session"]) for r in results)
             if not text:
                 today = os.path.join(HERE, "loomy_sessions_%s.txt" % time.strftime("%Y%m%d"))
@@ -669,8 +720,11 @@ class _Handler(BaseHTTPRequestHandler):
                 "running": bool(reg and not reg.stop_flag.is_set() and reg.done < self.total),
                 "ok": getattr(reg, "ok", 0), "fail": getattr(reg, "fail", 0),
                 "done": getattr(reg, "done", 0), "total": self.total,
-                "results": getattr(reg, "results", []), "logs": self.logs[-200:],
+                "current": getattr(reg, "current", "") if reg else "",
+                "results": self._merged_results(), "logs": self.logs[-200:],
                 "save_file": os.path.basename(saved_path()) if os.path.exists(saved_path()) else "",
+                "saved_total": saved_count(),
+                "saved_recent": saved_recent(30),
             })
             return
         self._send(404, {"detail": "not found"})
