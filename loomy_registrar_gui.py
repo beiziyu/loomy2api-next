@@ -48,6 +48,7 @@ from urllib import request as urlrequest
 APP_TITLE = "Loomy 本地注册器"
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "registrar.json")
 HERE = os.path.dirname(os.path.abspath(__file__))
+META_FILE = os.path.join(HERE, "registrar_meta.json")
 
 ACCOUNT_BASE = "https://account.xfinfr.com"
 SEND_CODE_PATH = "/login/phone/sendMsgCode"
@@ -336,6 +337,59 @@ def check_session(session: str) -> Optional[int]:
 
 # ------------------------------------------------------------------ 注册任务
 
+def load_meta() -> Dict[str, Any]:
+    try:
+        with open(META_FILE, encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def save_meta(meta: Dict[str, Any]) -> None:
+    try:
+        with open(META_FILE, "w", encoding="utf-8") as handle:
+            json.dump(meta, handle, ensure_ascii=False, indent=1)
+        os.chmod(META_FILE, 0o600)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def remember_session(item: Dict[str, Any]) -> None:
+    meta = load_meta()
+    meta[item["session"]] = {"note": item.get("note", ""), "phone": item.get("phone", ""),
+                             "points": item.get("points"), "at": int(time.time())}
+    save_meta(meta)
+
+
+_refreshing = {"sessions": set(), "lock": threading.Lock()}
+
+
+def refresh_points_async(sessions: List[str]) -> None:
+    """后台给缺失积分的 session 补查（每个 session 一次 /points/balance）。"""
+    def worker():
+        meta = load_meta()
+        for session in sessions:
+            with _refreshing["lock"]:
+                if session in _refreshing["sessions"]:
+                    continue
+                _refreshing["sessions"].add(session)
+            try:
+                points = check_session(session)
+                entry = meta.setdefault(session, {})
+                entry["points"] = points
+                entry["at"] = int(time.time())
+                save_meta(meta)
+            except Exception:  # noqa: BLE001
+                pass
+            finally:
+                with _refreshing["lock"]:
+                    _refreshing["sessions"].discard(session)
+            time.sleep(0.3)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def saved_path() -> str:
     return os.path.join(HERE, "loomy_sessions_%s.txt" % time.strftime("%Y%m%d"))
 
@@ -447,6 +501,7 @@ class Registrar:
                     self.ok += 1
                     self.results.append(item)
                 saved = append_result_file(item)
+                remember_session(item)
                 self.log("[%d] ✅ %s 登录成功（积分 %s）｜已落盘 %s"
                          % (index, phone, points, os.path.basename(saved)))
                 return
@@ -595,7 +650,7 @@ th{color:var(--muted);background:#171f29}.mono{font-family:ui-monospace,Menlo,mo
 </main>
 <script>
 const F=['base_url','project_id','username','password','count','concurrency','code_timeout','attempts','note_prefix','block_prefixes'];
-let RESULTS=[];
+let RESULTS=[];let REFILL=0;
 const $=id=>document.getElementById(id);
 async function api(path,opt){const r=await fetch(path,Object.assign({headers:{'Content-Type':'application/json'}},opt||{}));
 const t=await r.text();let d;try{d=t?JSON.parse(t):null}catch(e){d=t}if(!r.ok)throw new Error((d&&d.detail)||t);return d}
@@ -610,7 +665,8 @@ RESULTS=d.results||[];
 $('cnt').textContent='本批成功 '+d.ok+' · 失败 '+d.fail+' · 进度 '+d.done+'/'+d.total+' ｜ 累计已落盘 '+(d.saved_total||0)+' 条 '+(d.save_file||'');
 render();$('log').textContent=(d.logs||[]).join('\\n')||'（未开始）';$('log').scrollTop=1e9;
 if(d.save_file)$('st').textContent='已自动保存到 '+d.save_file+(d.running?'（注册中）':'');
-if(d.running)setTimeout(load,1500)}
+if(d.running){setTimeout(load,1500)}
+if(!d.running&&RESULTS.some(r=>r.points==null)&&REFILL<6){REFILL++;setTimeout(load,3000)}}
 function render(){const b=$('rows');if(!RESULTS.length){b.innerHTML='<tr><td colspan="4" class="hint">暂无</td></tr>';return}
 b.innerHTML=RESULTS.map(r=>`<tr><td>${r.note}</td><td class="mono">${r.phone}</td><td class="mono">${r.session.slice(0,12)}…</td><td class="mono">${r.points??'-'}</td></tr>`).join('')}
 function payload(){const o={};F.forEach(k=>{let v=$(k).value.trim();if(['count','concurrency','code_timeout','attempts'].includes(v))v=Number(v);
@@ -667,14 +723,22 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _merged_results(self) -> List[Dict[str, Any]]:
         """落盘累计 + 本批内存，按 session 去重（内存优先，带手机号和积分）。"""
+        meta = load_meta()
         merged: Dict[str, Dict[str, Any]] = {}
         for line in saved_all():
             note, _, session = line.partition("|")
-            if session:
-                merged[session] = {"note": note, "session": session, "phone": "", "points": None}
+            if not session:
+                continue
+            info = meta.get(session) or {}
+            merged[session] = {"note": note or info.get("note", ""), "session": session,
+                               "phone": info.get("phone", ""), "points": info.get("points")}
         reg = self.__class__.reg
         for item in (getattr(reg, "results", []) if reg else []):
             merged[item["session"]] = item
+        # 缺积分的后台补查（限流，不阻塞页面）
+        missing = [k for k, v in merged.items() if v.get("points") is None]
+        if missing:
+            refresh_points_async(missing[:40])
         return list(merged.values())
 
     def _page(self) -> str:

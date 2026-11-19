@@ -20,3 +20,4 @@ venv/
 data/
 registrar.json
 loomy_sessions_*.txt
+registrar_meta.json
