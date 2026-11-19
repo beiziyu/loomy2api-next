@@ -554,7 +554,7 @@ async function api(path,opt){const r=await fetch(path,Object.assign({headers:{'C
 const t=await r.text();let d;try{d=t?JSON.parse(t):null}catch(e){d=t}if(!r.ok)throw new Error((d&&d.detail)||t);return d}
 async function load(){const d=await api('api/state');F.forEach(k=>{if(d.config[k]!==undefined&&!(k==='password'&&d.config[k]==='***'))$(k).value=d.config[k]});
 $('bal').textContent='余额 '+(d.balance||'-');$('st').textContent=d.running?`注册中 ${d.done}/${d.total}`:(d.done?`完成 成功 ${d.ok} 失败 ${d.fail}`:'就绪');
-RESULTS=d.results||[];render();$('log').textContent=(d.logs||[]).join('\n')||'（未开始）';$('log').scrollTop=1e9;
+RESULTS=d.results||[];render();$('log').textContent=(d.logs||[]).join('\\n')||'（未开始）';$('log').scrollTop=1e9;
 if(d.save_file)$('st').textContent='已自动保存到 '+d.save_file+(d.running?'（注册中）':'');
 if(d.running)setTimeout(load,1500)}
 function render(){const b=$('rows');if(!RESULTS.length){b.innerHTML='<tr><td colspan="4" class="hint">暂无</td></tr>';return}
@@ -570,7 +570,7 @@ async function refreshBalance(){
    $('st').textContent=d.ok?('余额已更新：'+d.balance):('查余额失败：'+(d.error||''));}
  catch(e){$('st').textContent='查余额请求失败：'+e.message}}
 function exportFile(){if(!RESULTS.length){$('st').textContent='还没有成功的 session';return}location.href='api/export'}
-function copyAll(){const t=RESULTS.map(r=>r.note+'|'+r.session).join('\n');navigator.clipboard.writeText(t);$('st').textContent='已复制 '+RESULTS.length+' 条'}
+function copyAll(){const t=RESULTS.map(r=>r.note+'|'+r.session).join('\\n');navigator.clipboard.writeText(t);$('st').textContent='已复制 '+RESULTS.length+' 条'}
 load();
 </script></body></html>"""
 
@@ -592,7 +592,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    BUILD = "2026-11-19b"
+    BUILD = "2026-11-19c"
 
     def _page(self) -> str:
         """把配置直接渲染进输入框，避免依赖前端回填/缓存。"""
