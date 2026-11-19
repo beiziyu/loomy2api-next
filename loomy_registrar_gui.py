@@ -70,6 +70,7 @@ DEFAULT_CFG: Dict[str, Any] = {
     "password": "",
     "project_id": "",
     "path_login": "/Login/?username={username}&password={password}&type=json",
+    "path_balance": "/Balance/?token={token}&type=json",
     "path_get_phone": "/GetPhone/?token={token}&id={project}&type=json",
     "path_get_code": "/GetMsg/?token={token}&id={project}&phone={phone}&type=json",
     "path_release": "/Cancel/?token={token}&id={project}&phone={phone}&type=json",
@@ -137,7 +138,9 @@ class SmsPlatform:
         self.token = ""
 
     def _url(self, key: str, phone: str = "") -> str:
-        path = str(self.cfg.get(key) or "")
+        path = str(self.cfg.get(key) or DEFAULT_CFG.get(key) or "")
+        if not path:
+            raise RuntimeError("接口路径未配置：%s" % key)
         values = {
             "token": self.token,
             "project": str(self.cfg.get("project_id") or ""),
@@ -168,26 +171,34 @@ class SmsPlatform:
         raise RuntimeError("平台登录失败：%s" % raw[:120])
 
     def balance(self) -> str:
-        if not self.token:
-            self.login()
-        raw = http_get(self._url("path_balance"))
-        ok, fields = pipe_ok(raw)
-        if ok and fields:
-            return fields[0]
-        try:
-            data = json.loads(raw)
-            inner = data.get("data")
-            if isinstance(inner, dict):
-                money = inner.get("money") or inner.get("balance")
-                if money is not None:
-                    return str(money)
-            if isinstance(inner, str) and inner:
-                return inner
-            if inner is None:
-                return "平台未返回余额(data=null)"
-        except Exception:  # noqa: BLE001
-            pass
-        return raw[:60]
+        last_raw = ""
+        for attempt in range(3):
+            if attempt or not self.token:
+                try:
+                    self.token = ""       # 每轮重新登录，避免 token 失效拿到 data=null
+                    self.login()
+                except Exception as exc:  # noqa: BLE001
+                    return "登录失败：%s" % str(exc)[:80]
+            raw = http_get(self._url("path_balance"))
+            last_raw = raw
+            ok, fields = pipe_ok(raw)
+            if ok and fields:
+                return fields[0]
+            try:
+                data = json.loads(raw)
+                inner = data.get("data")
+                if isinstance(inner, dict):
+                    money = inner.get("money") or inner.get("balance")
+                    if money is not None:
+                        return str(money)
+                if isinstance(inner, str) and inner:
+                    return inner
+                if str(data.get("code")) == "1" and inner is None:
+                    return "0"
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(1.5)
+        return "平台原文：" + last_raw[:100]
 
     def get_phone(self) -> str:
         if not self.token:
@@ -592,7 +603,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    BUILD = "2026-11-19c"
+    BUILD = "2026-11-19d"
 
     def _page(self) -> str:
         """把配置直接渲染进输入框，避免依赖前端回填/缓存。"""
